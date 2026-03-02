@@ -173,7 +173,13 @@
         }
 
         #flower-popup.show {
+            display: flex !important;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
             animation: popup-scale 3s ease-in-out;
+            gap: 20px;
+            /* 使用 gap 保證絕對間距 */
         }
 
         @keyframes popup-scale {
@@ -208,10 +214,8 @@
             line-height: 1;
             text-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
             margin: 0;
-            margin-bottom: 20px;
-            /* 增加底部間距 */
-            display: block;
-            /* 確保斷行避免重疊 */
+            z-index: 1;
+            /* 花朵在下層 */
         }
 
         #flower-text {
@@ -219,9 +223,14 @@
             font-weight: bold;
             color: #ffcccc;
             text-shadow: 2px 2px 10px #ff0000;
-            margin-top: 10px;
+            margin: 0;
+            padding: 10px 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            /* 加入半透明黑底確保字體不會被花的顏色吃掉 */
+            border-radius: 10px;
             white-space: nowrap;
-            /* 避免文字斷行折疊 */
+            z-index: 2;
+            /* 文字在上層 */
         }
 
         /* 閃爍動畫 */
