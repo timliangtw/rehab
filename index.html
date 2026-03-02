@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>左側忽略症復健訓練 (Left Neglect Rehab)</title>
+    <!-- 引入 Brython -> 針對手機長輩操作，載入極快，效能也很好 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/brython/3.12.0/brython.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/brython/3.12.0/brython_stdlib.js"></script>
+
+    <style>
+        /* [1. CSS Styles: High Contrast, Big Texts, Responsive] */
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #000000;
+            color: #ffffff;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            overflow: hidden;
+            /* 防止滾動 */
+            user-select: none;
+            /* 防止誤觸反白字體 */
+            -webkit-user-select: none;
+            touch-action: none;
+            /* 防止瀏覽器的雙擊放大、邊緣滑動行為 */
+        }
+
+        /* 恆定的寬度 10px 的紅色高對比垂直線，螢幕最左側作為掃描起點 */
+        #anchor-line {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 10px;
+            height: 100%;
+            background-color: #ff0000;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        /* UI 頂端：分數、時間資訊與結束按鈕 */
+        #header {
+            position: absolute;
+            top: 10px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+        }
+
+        #score-display,
+        #time-display {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-right: 15px;
+            text-shadow: 1px 1px 2px #000;
+        }
+
+        #end-btn {
+            font-size: 24px;
+            padding: 10px 20px;
+            background-color: #555555;
+            color: white;
+            border: 2px solid #ffffff;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5);
+        }
+
+        /* 目標物（黃色圓圈，直徑 80px） */
+        #target {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            /* 改為立體漸層質感 */
+            background: radial-gradient(circle at 30% 30%, #ffffaa, #ffcc00 40%, #cc9900 80%, #664400 100%);
+            border: 2px solid #ffee55;
+            border-radius: 50%;
+            cursor: pointer;
+            display: none;
+            /* 初始隱藏，由 python 控制顯示 */
+            z-index: 50;
+            box-shadow: 0 10px 20px rgba(255, 255, 0, 0.4), inset 0 -5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        /* 中央巨大鼓勵字樣 */
+        #encouragement {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 60px;
+            font-weight: bold;
+            color: #00ff00;
+            text-align: center;
+            display: none;
+            z-index: 200;
+            pointer-events: none;
+            text-shadow: 2px 2px 10px rgba(0, 0, 0, 0.8);
+        }
+
+        /* 歷史調閱面板 */
+        #history-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 45%;
+            background-color: rgba(30, 30, 30, 0.98);
+            border-top: 2px solid #ffffff;
+            display: none;
+            /* 初始隱藏，結束訓練後顯示 */
+            flex-direction: column;
+            align-items: center;
+            z-index: 300;
+            padding-top: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        #history-panel h2 {
+            margin: 0 0 15px 0;
+            font-size: 28px;
+            color: #ffff00;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 90%;
+            max-width: 600px;
+            font-size: 22px;
+            text-align: center;
+        }
+
+        th,
+        td {
+            border: 1px solid #777;
+            padding: 10px;
+        }
+
+        th {
+            background-color: #444;
+        }
+
+        #restart-btn {
+            margin-top: 20px;
+            font-size: 24px;
+            padding: 12px 30px;
+            background-color: #007bff;
+            color: white;
+            border: 2px solid #ffffff;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+
+        /* 成功花朵彈出動畫與樣式 */
+        #flower-popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            text-align: center;
+            display: none;
+            z-index: 400;
+            pointer-events: none;
+        }
+
+        #flower-popup.show {
+            animation: popup-scale 3s ease-in-out;
+        }
+
+        @keyframes popup-scale {
+            0% {
+                transform: translate(-50%, -50%) scale(0);
+                opacity: 0;
+            }
+
+            10% {
+                transform: translate(-50%, -50%) scale(1.2);
+                opacity: 1;
+            }
+
+            20% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 1;
+            }
+
+            80% {
+                transform: translate(-50%, -50%) scale(1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: translate(-50%, -50%) scale(0.5);
+                opacity: 0;
+            }
+        }
+
+        #flower-img {
+            font-size: 150px;
+            line-height: 1;
+            text-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+            margin: 0;
+        }
+
+        #flower-text {
+            font-size: 40px;
+            font-weight: bold;
+            color: #ffcccc;
+            text-shadow: 2px 2px 10px #ff0000;
+            margin-top: 10px;
+        }
+
+        /* 閃爍動畫 */
+        @keyframes fast-blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.1;
+            }
+        }
+
+        .blink-target {
+            animation: fast-blink 0.5s infinite !important;
+        }
+
+        @keyframes shake-anchor {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(5px);
+            }
+
+            75% {
+                transform: translateX(-5px);
+            }
+        }
+
+        .blink-anchor {
+            animation: shake-anchor 0.2s infinite, fast-blink 0.5s infinite !important;
+        }
+    </style>
+</head>
+
+<body onload="brython()">
+    <!-- 確保網頁能夠作為 Github Pages 直接開啟： -->
+    <!-- 部署說明 (給開發者)：
+         1. 將此 index.html 放入 Github 儲存庫的根目錄並上傳 (Push)。
+         2. 在 Github 專案網頁，進入 Settings -> Pages。
+         3. Source 選擇 "Deploy from a branch"，分支選擇 "main" 或 "master" 的 "/ (root)" 資料夾，點擊 Save。
+         4. 等待 1-2 分鐘後，即可透過 Github 提供的網址進入並給長輩直接操作。
+    -->
+
+    <!-- 左側視覺錨點 -->
+    <div id="anchor-line"></div>
+
+    <!-- UI -->
+    <div id="header">
+        <div>
+            <span id="score-display">分數: 0</span>
+            <span id="time-display">時間: 0秒</span>
+        </div>
+        <button id="end-btn">結束訓練</button>
+    </div>
+
+    <!-- 鼓勵字樣 -->
+    <div id="encouragement">好棒！進步了！</div>
+
+    <!-- 成功花朵動畫 -->
+    <div id="flower-popup">
+        <div id="flower-img">&#x1F339;</div>
+        <div id="flower-text">做得好！真漂亮！</div>
+    </div>
+
+    <!-- 點擊目標物 -->
+    <div id="target"></div>
+
+    <!-- 歷史數據面板 -->
+    <div id="history-panel">
+        <h2>最近 7 天復健紀錄</h2>
+        <table id="history-table">
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>得分</th>
+                    <th>時長(秒)</th>
+                </tr>
+            </thead>
+            <tbody id="history-tbody">
+            </tbody>
+        </table>
+        <button id="restart-btn">重新開始</button>
+    </div>
+
+    <!-- Python 邏輯區 (Brython) -->
+    <script type="text/python">
+        from browser import document, window, timer, bind
+        import random
+        import json
+        import math
+
+        # 全域變數狀態
+        state = {
+            "score": 0,
+            "start_time": window.Date.new().getTime(),
+            "elapsed_seconds": 0,
+            "timer_id": None,
+            "encouragement_timer": None,
+            "is_active": True,
+            "round_target_count": 0,
+            "target_spawn_time": 0,
+            "target_is_left": False
+        }
+
+        # 常數
+        TARGET_SIZE = 80
+        ANCHOR_WIDTH = 10
+
+        # UI 元件
+        score_display = document["score-display"]
+        time_display = document["time-display"]
+        target = document["target"]
+        encouragement = document["encouragement"]
+        history_panel = document["history-panel"]
+        flower_popup = document["flower-popup"]
+
+        def update_timer():
+            """更新時間與判定閃爍提示"""
+            if not state["is_active"]:
+                return
+            now = window.Date.new().getTime()
+            state["elapsed_seconds"] = int((now - state["start_time"]) / 1000)
+            time_display.text = f"時間: {state['elapsed_seconds']}秒"
+            
+            if target.style.display != "none" and state["target_spawn_time"] > 0:
+                alive_ms = now - state["target_spawn_time"]
+                if state["target_is_left"]:
+                    if alive_ms > 10000:
+                        if not target.classList.contains("blink-target"):
+                            target.classList.add("blink-target")
+                        if not document["anchor-line"].classList.contains("blink-anchor"):
+                            document["anchor-line"].classList.add("blink-anchor")
+                    elif alive_ms > 5000:
+                        if not target.classList.contains("blink-target"):
+                            target.classList.add("blink-target")
+                    else:
+                        target.classList.remove("blink-target")
+                        document["anchor-line"].classList.remove("blink-anchor")
+
+        def show_encouragement():
+            """顯示破關鼓勵文字"""
+            encouragement.style.display = "block"
+            if state["encouragement_timer"]:
+                timer.clear_timeout(state["encouragement_timer"])
+            state["encouragement_timer"] = timer.set_timeout(hide_encouragement, 2000)
+
+        def hide_encouragement():
+            encouragement.style.display = "none"
+            state["encouragement_timer"] = None
+            
+        def show_flower_popup():
+            flower_popup.style.display = "block"
+            flower_popup.classList.add("show")
+            def hide_flower():
+                flower_popup.classList.remove("show")
+                flower_popup.style.display = "none"
+            timer.set_timeout(hide_flower, 3000)
+
+        def spawn_target():
+            """隨機生成目標物"""
+            if not state["is_active"]:
+                return
+
+            # 確保不會生成在可視範圍外，考慮 header 高度避開按鈕
+            w = window.innerWidth
+            h = window.innerHeight
+
+            # 避開頂端分數列與下方邊緣
+            min_y = 80
+            max_y = h - TARGET_SIZE - 20
+            if max_y < min_y: max_y = min_y # 防呆
+
+            # X軸：80%機率在左半部(0~50%)
+            if random.random() < 0.8:
+                # 左半部分: anchor 右方到螢幕中線
+                min_x = ANCHOR_WIDTH + 5
+                max_x = int(w / 2) - TARGET_SIZE
+            else:
+                # 右半部分: 螢幕中線到最右方
+                min_x = int(w / 2)
+                max_x = w - TARGET_SIZE - 20
+
+            if max_x < min_x: max_x = min_x + 1
+
+            new_x = random.randint(min_x, max_x)
+            new_y = random.randint(min_y, max_y)
+
+            target.style.left = f"{new_x}px"
+            target.style.top = f"{new_y}px"
+            target.style.display = "block"
+            
+            state["target_spawn_time"] = window.Date.new().getTime()
+            state["target_is_left"] = (new_x + TARGET_SIZE / 2) < (w * 0.5)
+
+        @bind(window, "resize")
+        def on_resize(ev):
+            """當螢幕轉向或改變大小，自動修正目標物位置若它在界外"""
+            if not state["is_active"] or target.style.display == "none":
+                return
+            
+            try:
+                curr_x = int(target.style.left.replace("px", ""))
+                curr_y = int(target.style.top.replace("px", ""))
+                
+                w = window.innerWidth
+                h = window.innerHeight
+                
+                if curr_x + TARGET_SIZE > w or curr_y + TARGET_SIZE > h:
+                    # 如果界外，重製目標
+                    spawn_target()
+            except Exception:
+                pass
+
+
+        @bind("#target", "pointerdown")
+        def hit_target(ev):
+            """擊中目標物 (觸控或滑鼠)"""
+            if not state["is_active"]:
+                return
+            
+            # 手機防呆：防止連點放大或選取
+            ev.preventDefault()
+            
+            target.style.display = "none"
+
+            # 計算中心點，依照需求：左側區域（0~33%寬度）給 100 分，其餘 20 分
+            rect = target.getBoundingClientRect()
+            center_x = rect.left + TARGET_SIZE / 2
+            
+            w = window.innerWidth
+            
+            old_score = state["score"]
+            if center_x < w * 0.33:
+                state["score"] += 100
+            else:
+                state["score"] += 20
+                
+            score_display.text = f"分數: {state['score']}"
+
+            # 破關感：跨越 1000 分的倍數
+            if math.floor(state["score"] / 1000) > math.floor(old_score / 1000):
+                show_encouragement()
+
+            # 花朵動畫回合制：每 10 顆球
+            state["round_target_count"] += 1
+            if state["round_target_count"] >= 10:
+                show_flower_popup()
+                state["round_target_count"] = 0
+            
+            target.classList.remove("blink-target")
+            document["anchor-line"].classList.remove("blink-anchor")
+
+            # 0.2秒後生成下一個
+            timer.set_timeout(spawn_target, 200)
+
+        
+        # 存取紀錄邏輯 (LocalStorage 持久化)
+        def get_today_string():
+            d = window.Date.new()
+            y = d.getFullYear()
+            m = str(d.getMonth() + 1).zfill(2)
+            day = str(d.getDate()).zfill(2)
+            return f"{y}-{m}-{day}"
+
+        def save_record():
+            """將當前成績儲存到 localStorage"""
+            if state["score"] == 0 and state["elapsed_seconds"] == 0:
+                pass # 無成績例外
+
+            today = get_today_string()
+            
+            storage = getattr(window, "localStorage", None)
+            data = {}
+            if storage:
+                try:
+                    raw = storage.getItem("rehab_records")
+                    if raw:
+                        data = json.loads(raw)
+                except Exception as e:
+                    print("讀取 LocalStorage 失敗:", e)
+
+            # 更新今天資料 (累加秒數跟分數)
+            if today not in data:
+                data[today] = {"score": 0, "time": 0}
+            
+            data[today]["score"] += state["score"]
+            data[today]["time"] += state["elapsed_seconds"]
+
+            # 存回
+            if storage:
+                try:
+                    storage.setItem("rehab_records", json.dumps(data))
+                except Exception as e:
+                    print("寫入 LocalStorage 失敗:", e)
+            
+            return data
+
+        def render_history(data):
+            """繪製最近 7 天紀錄於表格上方"""
+            tbody = document["history-tbody"]
+            tbody.html = "" # clear
+            
+            dates = sorted(data.keys(), reverse=True)
+            
+            # 取最近 7 筆
+            for d in dates[:7]:
+                row = data[d]
+                tr = document.createElement("tr")
+                
+                td_date = document.createElement("td")
+                td_date.text = d
+                
+                td_score = document.createElement("td")
+                td_score.text = str(row["score"])
+                
+                td_time = document.createElement("td")
+                td_time.text = str(row["time"])
+                
+                tr <= td_date
+                tr <= td_score
+                tr <= td_time
+                
+                tbody <= tr
+
+        @bind("#end-btn", "pointerdown")
+        def end_training(ev):
+            """結束訓練"""
+            ev.preventDefault()
+            if not state["is_active"]:
+                return
+            
+            state["is_active"] = False
+            timer.clear_interval(state["timer_id"])
+            target.style.display = "none"
+            
+            all_records = save_record()
+            
+            render_history(all_records)
+            history_panel.style.display = "flex"
+
+        @bind("#restart-btn", "pointerdown")
+        def restart_training(ev):
+            """重新開始訓練"""
+            ev.preventDefault()
+            
+            state["score"] = 0
+            state["start_time"] = window.Date.new().getTime()
+            state["elapsed_seconds"] = 0
+            state["is_active"] = True
+            state["round_target_count"] = 0
+            state["target_spawn_time"] = 0
+            state["target_is_left"] = False
+            
+            score_display.text = f"分數: {state['score']}"
+            time_display.text = f"時間: {state['elapsed_seconds']}秒"
+            history_panel.style.display = "none"
+            
+            state["timer_id"] = timer.set_interval(update_timer, 200) # 更密集的檢查
+            spawn_target()
+
+        # 啟動頁面時立刻開始
+        def init():
+            state["timer_id"] = timer.set_interval(update_timer, 200) # 更密集的檢查
+            spawn_target()
+
+        init()
+    </script>
+</body>
+
+</html>
